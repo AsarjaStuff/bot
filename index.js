@@ -1,7 +1,6 @@
 const { Client, GatewayIntentBits, SlashCommandBuilder, EmbedBuilder } = require('discord.js');
-const fs = require('fs');
-const path = require('path');
-const db = require('./db'); // Database handler
+const { Tryout, Wins, sequelize } = require('./db'); // Now importing from db.js (Sequelize models)
+require('dotenv').config();
 
 const client = new Client({
   intents: [GatewayIntentBits.Guilds],
@@ -69,22 +68,21 @@ client.on('interactionCreate', async interaction => {
     const gamerules = interaction.options.getString('gamerules');
     const concluded_time = interaction.options.getInteger('concluded_time');
 
-    // Save tryout details in database
-    const tryout_id = `${interaction.guild.id}-${Date.now()}`;
-    db.run('INSERT INTO tryouts (tryout_id, host_id, cohost_id, gamelink, gamerules, concluded_time) VALUES (?, ?, ?, ?, ?, ?)', [
-      tryout_id, host, cohost || 'None', gamelink || 'None', gamerules || 'None', concluded_time
-    ], function(err) {
-      if (err) {
-        console.error(err);
-        return interaction.reply('There was an error while saving the tryout details.');
-      }
+    // Create and save tryout details using Sequelize
+    const tryout = await Tryout.create({
+      hostId: host,
+      cohostId: cohost || 'None',
+      gamelink: gamelink || 'None',
+      gamerules: gamerules || 'None',
+      concludedTime: concluded_time ? new Date(concluded_time) : null,
+      concluded: false,
     });
 
     // Send the embed message
     const embed = new EmbedBuilder()
       .setTitle('Tryout Event')
-      .setDescription(`Host: ${host}\nCohost: ${cohost || 'None'}\nGame Link: ${gamelink || 'None'}\nGame Rules: ${gamerules || 'None'}`)
-      .setFooter({ text: `Concluded at: ${new Date(concluded_time).toLocaleString()}` });
+      .setDescription(`Host: ${host}\nCohost: ${cohost}\nGame Link: ${gamelink}\nGame Rules: ${gamerules}`)
+      .setFooter({ text: 'Concluded at ' + new Date(concluded_time).toLocaleString() });
 
     await interaction.reply({ embeds: [embed] });
   }
@@ -93,14 +91,15 @@ client.on('interactionCreate', async interaction => {
     const wins = interaction.options.getInteger('wins');
     const user = interaction.options.getUser('user');
     
-    db.run('INSERT OR REPLACE INTO users (user_id, wins) VALUES (?, COALESCE((SELECT wins FROM users WHERE user_id = ?), 0) + ?)', [
-      user.id, user.id, wins
-    ], function(err) {
-      if (err) {
-        console.error(err);
-        return interaction.reply('There was an error while updating the wins.');
-      }
-    });
+    // Add wins using Sequelize
+    const userWins = await Wins.findOne({ where: { userId: user.id } });
+
+    if (userWins) {
+      userWins.wins += wins;
+      await userWins.save();
+    } else {
+      await Wins.create({ userId: user.id, wins });
+    }
 
     await interaction.reply(`${wins} wins added to ${user.username}.`);
   }
@@ -109,43 +108,40 @@ client.on('interactionCreate', async interaction => {
     const wins = interaction.options.getInteger('wins');
     const user = interaction.options.getUser('user');
     
-    db.run('INSERT OR REPLACE INTO users (user_id, wins) VALUES (?, COALESCE((SELECT wins FROM users WHERE user_id = ?), 0) - ?)', [
-      user.id, user.id, wins
-    ], function(err) {
-      if (err) {
-        console.error(err);
-        return interaction.reply('There was an error while updating the wins.');
-      }
-    });
+    // Subtract wins using Sequelize
+    const userWins = await Wins.findOne({ where: { userId: user.id } });
+
+    if (userWins) {
+      userWins.wins -= wins;
+      await userWins.save();
+    } else {
+      await Wins.create({ userId: user.id, wins: -wins });
+    }
 
     await interaction.reply(`${wins} wins removed from ${user.username}.`);
   }
 
   if (commandName === 'leaderboard') {
-    db.all('SELECT user_id, wins FROM users ORDER BY wins DESC LIMIT 10', [], (err, rows) => {
-      if (err) {
-        console.error(err);
-        return interaction.reply('Error fetching leaderboard.');
-      }
-
-      const embed = new EmbedBuilder().setTitle('Leaderboard');
-      rows.forEach((row, index) => {
-        embed.addFields({ name: `${index + 1}. ${row.user_id}`, value: `Wins: ${row.wins}` });
-      });
-
-      interaction.reply({ embeds: [embed] });
+    // Fetch leaderboard with Sequelize
+    const topUsers = await Wins.findAll({ order: [['wins', 'DESC']], limit: 10 });
+    
+    const embed = new EmbedBuilder().setTitle('Leaderboard');
+    topUsers.forEach((user, index) => {
+      embed.addFields({ name: `${index + 1}. ${user.userId}`, value: `Wins: ${user.wins}` });
     });
+
+    interaction.reply({ embeds: [embed] });
   }
 
   if (commandName === 'view') {
     const user = interaction.options.getUser('user');
-    db.get('SELECT wins FROM users WHERE user_id = ?', [user.id], (err, row) => {
-      if (err || !row) {
-        return interaction.reply('This user has no wins recorded.');
-      }
+    const userWins = await Wins.findOne({ where: { userId: user.id } });
 
-      interaction.reply(`${user.username} has ${row.wins} wins.`);
-    });
+    if (!userWins) {
+      return interaction.reply('This user has no wins recorded.');
+    }
+
+    interaction.reply(`${user.username} has ${userWins.wins} wins.`);
   }
 });
 
