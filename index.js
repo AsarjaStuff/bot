@@ -1,4 +1,5 @@
 const { Client, GatewayIntentBits, EmbedBuilder, SlashCommandBuilder, Collection, ButtonBuilder, ButtonStyle, ActionRowBuilder } = require('discord.js');
+const deployCommands = require('./deleteCommands');
 
 // Environment variables
 const TOKEN = process.env.TOKEN;
