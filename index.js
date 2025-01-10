@@ -64,7 +64,7 @@ client.commands.set('tryout', {
         { name: 'Game Rules', value: `\`\`\`${gamerules}\`\`\`` }, // Code block formatting
         { name: 'Concludes At', value: `\`\`\`${concludedTime.toISOString()}\`\`\`` }, // Code block formatting
       )
-      .setColor('Green');
+      .setColor('#000000');
 
     const message = await interaction.reply({ embeds: [embed], components: [row], fetchReply: true });
 
@@ -110,7 +110,8 @@ client.commands.set('add', {
   }
 });
 
-client.once('ready', () => {
+// Making the 'ready' event async
+client.once('ready', async () => { // Now async
   console.log(`Bot is ready as ${client.user.tag}`);
   const { REST, Routes } = require('discord.js');
   const rest = new REST({ version: '10' }).setToken(TOKEN);
