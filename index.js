@@ -73,13 +73,18 @@ client.on('interactionCreate', async interaction => {
     const tryout_id = `${interaction.guild.id}-${Date.now()}`;
     db.run('INSERT INTO tryouts (tryout_id, host_id, cohost_id, gamelink, gamerules, concluded_time) VALUES (?, ?, ?, ?, ?, ?)', [
       tryout_id, host, cohost || 'None', gamelink || 'None', gamerules || 'None', concluded_time
-    ]);
+    ], function(err) {
+      if (err) {
+        console.error(err);
+        return interaction.reply('There was an error while saving the tryout details.');
+      }
+    });
 
     // Send the embed message
     const embed = new EmbedBuilder()
       .setTitle('Tryout Event')
-      .setDescription(`Host: ${host}\nCohost: ${cohost}\nGame Link: ${gamelink}\nGame Rules: ${gamerules}`)
-      .setFooter({ text: 'Concluded at ' + new Date(concluded_time).toLocaleString() });
+      .setDescription(`Host: ${host}\nCohost: ${cohost || 'None'}\nGame Link: ${gamelink || 'None'}\nGame Rules: ${gamerules || 'None'}`)
+      .setFooter({ text: `Concluded at: ${new Date(concluded_time).toLocaleString()}` });
 
     await interaction.reply({ embeds: [embed] });
   }
@@ -90,7 +95,12 @@ client.on('interactionCreate', async interaction => {
     
     db.run('INSERT OR REPLACE INTO users (user_id, wins) VALUES (?, COALESCE((SELECT wins FROM users WHERE user_id = ?), 0) + ?)', [
       user.id, user.id, wins
-    ]);
+    ], function(err) {
+      if (err) {
+        console.error(err);
+        return interaction.reply('There was an error while updating the wins.');
+      }
+    });
 
     await interaction.reply(`${wins} wins added to ${user.username}.`);
   }
@@ -101,7 +111,12 @@ client.on('interactionCreate', async interaction => {
     
     db.run('INSERT OR REPLACE INTO users (user_id, wins) VALUES (?, COALESCE((SELECT wins FROM users WHERE user_id = ?), 0) - ?)', [
       user.id, user.id, wins
-    ]);
+    ], function(err) {
+      if (err) {
+        console.error(err);
+        return interaction.reply('There was an error while updating the wins.');
+      }
+    });
 
     await interaction.reply(`${wins} wins removed from ${user.username}.`);
   }
