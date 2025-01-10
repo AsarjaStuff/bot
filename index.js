@@ -1,7 +1,6 @@
 const { Client, GatewayIntentBits, EmbedBuilder, SlashCommandBuilder, Collection } = require('discord.js');
-const { Sequelize, DataTypes, Op } = require('sequelize');
 
-// Environment variables (assuming Render environment handles them)
+// Environment variables
 const TOKEN = process.env.TOKEN;
 const GUILD_ID = process.env.GUILD_ID;
 const CLIENT_ID = process.env.CLIENT_ID;
@@ -9,23 +8,6 @@ const CLIENT_ID = process.env.CLIENT_ID;
 // Initialize Discord client
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 client.commands = new Collection();
-
-// Initialize database
-const sequelize = new Sequelize({ dialect: 'sqlite', storage: './database.sqlite' });
-
-// Database models
-const Tryout = sequelize.define('Tryout', {
-  hostId: DataTypes.STRING,
-  cohostId: DataTypes.STRING,
-  gamelink: DataTypes.STRING,
-  gamerules: DataTypes.TEXT,
-  concludedTime: DataTypes.DATE
-});
-
-const Wins = sequelize.define('Wins', {
-  userId: DataTypes.STRING,
-  wins: { type: DataTypes.INTEGER, defaultValue: 0 }
-});
 
 // Helper function to check role permissions
 function hasPermission(interaction) {
@@ -43,28 +25,16 @@ client.commands.set('tryout', {
     .addUserOption(option => option.setName('cohost').setDescription('Optional cohost')),
 
   async execute(interaction) {
-    console.log('Executing /tryout command...');
     if (!hasPermission(interaction)) return interaction.reply({ content: 'You do not have permission to use this command.', ephemeral: true });
 
     const gamelink = interaction.options.getString('gamelink');
     const gamerules = interaction.options.getString('gamerules');
     const concludedTime = new Date(interaction.options.getString('concluded'));
     if (isNaN(concludedTime.getTime())) {
-      console.log('Invalid date format received.');
       return interaction.reply({ content: 'Invalid date format. Please use YYYY-MM-DD HH:MM.', ephemeral: true });
     }
 
     const cohost = interaction.options.getUser('cohost');
-
-    await Tryout.create({
-      hostId: interaction.user.id,
-      cohostId: cohost ? cohost.id : null,
-      gamelink,
-      gamerules,
-      concludedTime
-    });
-
-    console.log(`Created new tryout session: Host - ${interaction.user.id}, Game Link - ${gamelink}`);
 
     const embed = new EmbedBuilder()
       .setTitle('🎮 Tryout Session')
@@ -91,47 +61,15 @@ client.commands.set('add', {
     .addUserOption(option => option.setName('user').setDescription('User to add wins to').setRequired(true)),
 
   async execute(interaction) {
-    console.log('Executing /add command...');
     if (!hasPermission(interaction)) return interaction.reply({ content: 'You do not have permission to use this command.', ephemeral: true });
 
     const number = interaction.options.getInteger('number');
     const user = interaction.options.getUser('user');
-    const [record] = await Wins.findOrCreate({ where: { userId: user.id } });
 
-    record.wins += number;
-    await record.save();
+    // Here, we will simulate the process without database
+    console.log(`Added ${number} wins to user ${user.id}.`);
 
-    console.log(`Added ${number} wins to user ${user.id}. Total wins: ${record.wins}`);
     await interaction.reply({ content: `Added ${number} wins to <@${user.id}>.`, ephemeral: true });
-  }
-});
-
-// Command: /unadd
-client.commands.set('unadd', {
-  data: new SlashCommandBuilder()
-    .setName('unadd')
-    .setDescription('Remove wins from a user')
-    .addIntegerOption(option => option.setName('number').setDescription('Number of wins').setRequired(true))
-    .addUserOption(option => option.setName('user').setDescription('User to remove wins from').setRequired(true)),
-
-  async execute(interaction) {
-    console.log('Executing /unadd command...');
-    if (!hasPermission(interaction)) return interaction.reply({ content: 'You do not have permission to use this command.', ephemeral: true });
-
-    const number = interaction.options.getInteger('number');
-    const user = interaction.options.getUser('user');
-    const record = await Wins.findOne({ where: { userId: user.id } });
-
-    if (!record || record.wins < number) {
-      console.log(`Attempted to remove ${number} wins from user ${user.id}, but insufficient wins.`);
-      return interaction.reply({ content: `<@${user.id}> does not have enough wins to remove.`, ephemeral: true });
-    }
-
-    record.wins -= number;
-    await record.save();
-
-    console.log(`Removed ${number} wins from user ${user.id}. Remaining wins: ${record.wins}`);
-    await interaction.reply({ content: `Removed ${number} wins from <@${user.id}>.`, ephemeral: true });
   }
 });
 
@@ -142,39 +80,18 @@ client.commands.set('leaderboard', {
     .setDescription('Show the leaderboard for wins'),
 
   async execute(interaction) {
-    console.log('Executing /leaderboard command...');
-    const topUsers = await Wins.findAll({ order: [['wins', 'DESC']], limit: 10 });
-    const embed = new EmbedBuilder().setTitle('🏆 Wins Leaderboard').setColor('Gold');
+    // For now, we simulate an empty leaderboard
+    const embed = new EmbedBuilder()
+      .setTitle('🏆 Wins Leaderboard')
+      .setColor('Gold')
+      .setDescription('Leaderboard is empty for now.');
 
-    topUsers.forEach((user, index) => {
-      embed.addFields({ name: `${index + 1}. <@${user.userId}>`, value: `${user.wins} wins` });
-    });
-
-    console.log(`Displayed leaderboard with top ${topUsers.length} users.`);
     await interaction.reply({ embeds: [embed] });
   }
 });
 
-// Periodic cleanup for concluded tryouts
-setInterval(async () => {
-  console.log('Running periodic cleanup for concluded tryouts...');
-  const now = new Date();
-  const concludedTryouts = await Tryout.findAll({ where: { concludedTime: { [Op.lte]: now } } });
-
-  for (const tryout of concludedTryouts) {
-    await Tryout.update({ gamelink: 'Concluded' }, { where: { id: tryout.id } });
-    console.log(`Updated tryout session to concluded: ID ${tryout.id}`);
-  }
-}, 60 * 1000);  // Check every minute
-
 client.once('ready', async () => {
   console.log(`Bot is ready as ${client.user.tag}`);
-  try {
-    await sequelize.sync();  // Initialize the database
-    console.log('Database synced successfully');
-  } catch (error) {
-    console.error('Error syncing the database:', error);
-  }
 
   // Register commands with Discord API (this can be done on bot start)
   const { REST, Routes } = require('discord.js');
@@ -184,6 +101,11 @@ client.once('ready', async () => {
 
   try {
     console.log('Started refreshing application (/) commands.');
+
+    if (!CLIENT_ID || !GUILD_ID) {
+      console.error('CLIENT_ID or GUILD_ID is missing!');
+      return;
+    }
 
     await rest.put(Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID), { body: commands });
 
