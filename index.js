@@ -42,9 +42,8 @@ client.commands.set('tryout', {
 
     // Create buttons for gamelink and concluded
     const gameLinkButton = new ButtonBuilder()
-      .setCustomId('gamelink')
       .setLabel('Game Link')
-      .setStyle(ButtonStyle.Link)
+      .setStyle(ButtonStyle.Link) // Removed customId here since it's a link button
       .setURL(gamelink);
 
     const concludedButton = new ButtonBuilder()
