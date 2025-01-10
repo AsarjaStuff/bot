@@ -1,4 +1,4 @@
-const { Client, GatewayIntentBits, EmbedBuilder, SlashCommandBuilder, Collection, ButtonBuilder, ActionRowBuilder, ButtonStyle } = require('discord.js');
+const { Client, GatewayIntentBits, EmbedBuilder, SlashCommandBuilder, Collection, ButtonBuilder, ButtonStyle, ActionRowBuilder } = require('discord.js');
 
 // Environment variables
 const TOKEN = process.env.TOKEN;
@@ -38,21 +38,22 @@ client.commands.set('tryout', {
     }
 
     const concludedTime = new Date(Date.now() + concludedMinutes * 60000); // Adding the concluded time in minutes
-
     const cohost = interaction.options.getUser('cohost');
 
-    // Create the buttons
+    // Create buttons for gamelink and concluded
     const gameLinkButton = new ButtonBuilder()
+      .setCustomId('gamelink')
       .setLabel('Game Link')
-      .setURL(gamelink)  // Setting the URL for the button
-      .setStyle(ButtonStyle.Link);
+      .setStyle(ButtonStyle.Link)
+      .setURL(gamelink);
 
     const concludedButton = new ButtonBuilder()
+      .setCustomId('concluded')
       .setLabel('Conclude')
-      .setCustomId('conclude') // To use in interaction
-      .setStyle(ButtonStyle.Danger);
+      .setStyle(ButtonStyle.Primary);
 
-    const row = new ActionRowBuilder().addComponents(gameLinkButton, concludedButton);
+    const row = new ActionRowBuilder()
+      .addComponents(gameLinkButton, concludedButton);
 
     const embed = new EmbedBuilder()
       .setTitle('🎮 Tryout Session')
@@ -68,66 +69,61 @@ client.commands.set('tryout', {
     const message = await interaction.reply({ embeds: [embed], components: [row], fetchReply: true });
 
     // Handle button interactions
-    const filter = (i) => i.customId === 'conclude' && i.user.id === interaction.user.id;
-    const collector = message.createMessageComponentCollector({ filter, time: concludedMinutes * 60000 });
+    const filter = i => i.user.id === interaction.user.id;
 
-    collector.on('collect', async (i) => {
-      if (i.customId === 'conclude') {
-        // Remove the game link button once concluded is clicked
-        const updatedRow = new ActionRowBuilder().addComponents(concludedButton.setDisabled(true));
-        await message.edit({ components: [updatedRow] });
+    try {
+      const collected = await message.awaitMessageComponent({ filter, time: concludedMinutes * 60000 });
 
-        // Start real-time countdown for the concluded time
-        const interval = setInterval(async () => {
-          const remainingTime = concludedTime - Date.now();
-          if (remainingTime <= 0) {
-            clearInterval(interval); // Stop the interval once time is up
-            return;
-          }
+      if (collected.customId === 'concluded') {
+        // Remove the GameLink button when concluded button is pressed
+        const updatedRow = new ActionRowBuilder()
+          .addComponents(concludedButton.setDisabled(true));
 
-          // Calculate remaining minutes and seconds
-          const minutesLeft = Math.floor(remainingTime / 60000);
-          const secondsLeft = Math.floor((remainingTime % 60000) / 1000);
-          const timeString = `${minutesLeft} minutes ${secondsLeft} seconds`;
-
-          // Update the embed with real-time countdown
-          const updatedEmbed = new EmbedBuilder(embed)
-            .setTitle('🎮 Tryout Session')
-            .setThumbnail(interaction.user.displayAvatarURL())
-            .addFields(
-              { name: 'Host', value: `<@${interaction.user.id}>`, inline: true },
-              { name: 'Cohost', value: cohost ? `<@${cohost.id}>` : 'None', inline: true },
-              { name: 'Game Rules', value: `\`\`\`${gamerules}\`\`\`` }, // Code block formatting
-              { name: 'Concludes At', value: `\`\`\`${timeString}\`\`\`` }, // Updated countdown time
-            )
-            .setColor('Green');
-
-          // Edit the message to update the countdown
-          await message.edit({ embeds: [updatedEmbed] });
-        }, 1000); // Update every second
+        await collected.update({ content: 'Tryout has concluded!', components: [updatedRow] });
       }
-    });
+
+    } catch (error) {
+      console.error('Error collecting button interaction:', error);
+      await interaction.editReply({ content: 'Timeout: No response received in time.', components: [] });
+    }
   }
 });
 
-client.once('ready', async () => {
+// Command: /add
+client.commands.set('add', {
+  data: new SlashCommandBuilder()
+    .setName('add')
+    .setDescription('Add wins to a user')
+    .addIntegerOption(option => option.setName('number').setDescription('Number of wins').setRequired(true))
+    .addUserOption(option => option.setName('user').setDescription('User to add wins to').setRequired(true)),
+
+  async execute(interaction) {
+    if (!hasPermission(interaction)) return interaction.reply({ content: 'You do not have permission to use this command.', ephemeral: true });
+
+    const number = interaction.options.getInteger('number');
+    const user = interaction.options.getUser('user');
+
+    // Simulate the process without a database
+    console.log(`Added ${number} wins to user ${user.id}.`);
+
+    await interaction.reply({ content: `Added ${number} wins to <@${user.id}>.`, ephemeral: true });
+  }
+});
+
+client.once('ready', () => {
   console.log(`Bot is ready as ${client.user.tag}`);
   const { REST, Routes } = require('discord.js');
   const rest = new REST({ version: '10' }).setToken(TOKEN);
 
   try {
     console.log('Started refreshing application (/) commands.');
+
     if (!CLIENT_ID || !GUILD_ID) {
       console.error('CLIENT_ID or GUILD_ID is missing!');
       return;
     }
 
-    const commands = await rest.get(Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID));
-    for (const command of commands) {
-      await rest.delete(Routes.applicationGuildCommand(CLIENT_ID, GUILD_ID, command.id));
-      console.log(`Deleted command: ${command.name}`);
-    }
-
+    // Register new commands
     const newCommands = client.commands.map(command => command.data.toJSON());
     await rest.put(Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID), { body: newCommands });
 
@@ -139,6 +135,7 @@ client.once('ready', async () => {
 
 client.on('interactionCreate', async interaction => {
   if (!interaction.isCommand()) return;
+
   const command = client.commands.get(interaction.commandName);
   if (!command) return;
 
