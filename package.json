@@ -1,14 +1,14 @@
 {
-    "name": "discord-bot",
-    "version": "1.0.0",
-    "main": "index.js",
-    "dependencies": {
-      "discord.js": "^14.8.0",
-      "sequelize": "^6.28.0",
-      "sqlite3": "^5.1.4"
-    },
-    "scripts": {
-      "start": "node index.js"
-    }
+  "name": "discord-bot",
+  "version": "1.0.0",
+  "main": "index.js",
+  "dependencies": {
+    "discord.js": "^14.7.1",
+    "sequelize": "^6.29.3",
+    "sqlite3": "^5.0.11"
+  },
+  "scripts": {
+    "start": "node index.js"
   }
+}
   
