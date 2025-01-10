@@ -1,6 +1,4 @@
 const { Client, GatewayIntentBits, EmbedBuilder, SlashCommandBuilder, Collection, ButtonBuilder, ButtonStyle, ActionRowBuilder } = require('discord.js');
-const { REST, Routes } = require('discord.js');  // Importing REST and Routes for command registration
-const deleteCommands = require('./deleteCommands');  // Import the function to delete old commands
 
 // Environment variables
 const TOKEN = process.env.TOKEN;
@@ -16,7 +14,7 @@ function hasPermission(interaction) {
   return interaction.member.roles.cache.has('1324028819103023174');
 }
 
-// Define commands
+// Command: /tryout
 client.commands.set('tryout', {
   data: new SlashCommandBuilder()
     .setName('tryout')
@@ -27,25 +25,25 @@ client.commands.set('tryout', {
     .addUserOption(option => option.setName('cohost').setDescription('Optional cohost')),
 
   async execute(interaction) {
-    if (!hasPermission(interaction)) {
-      return interaction.reply({ content: 'You do not have permission to use this command.', ephemeral: true });
-    }
+    if (!hasPermission(interaction)) return interaction.reply({ content: 'You do not have permission to use this command.', ephemeral: true });
 
     const gamelink = interaction.options.getString('gamelink');
     const gamerules = interaction.options.getString('gamerules');
     const concludedInput = interaction.options.getString('concluded');
+    
+    // Parse concluded time in minutes
     const concludedMinutes = parseInt(concludedInput.match(/\d+/)[0]);
-
     if (isNaN(concludedMinutes)) {
       return interaction.reply({ content: 'Invalid concluded time format. Please use a valid number of minutes (e.g. "3 minutes").', ephemeral: true });
     }
 
-    const concludedTime = new Date(Date.now() + concludedMinutes * 60000);
+    const concludedTime = new Date(Date.now() + concludedMinutes * 60000); // Adding the concluded time in minutes
     const cohost = interaction.options.getUser('cohost');
 
+    // Create buttons for gamelink and concluded
     const gameLinkButton = new ButtonBuilder()
       .setLabel('Game Link')
-      .setStyle(ButtonStyle.Link)
+      .setStyle(ButtonStyle.Link) // Removed customId here since it's a link button
       .setURL(gamelink);
 
     const concludedButton = new ButtonBuilder()
@@ -53,7 +51,8 @@ client.commands.set('tryout', {
       .setLabel('Conclude')
       .setStyle(ButtonStyle.Primary);
 
-    const row = new ActionRowBuilder().addComponents(gameLinkButton, concludedButton);
+    const row = new ActionRowBuilder()
+      .addComponents(gameLinkButton, concludedButton);
 
     const embed = new EmbedBuilder()
       .setTitle('🎮 Tryout Session')
@@ -61,20 +60,27 @@ client.commands.set('tryout', {
       .addFields(
         { name: 'Host', value: `<@${interaction.user.id}>`, inline: true },
         { name: 'Cohost', value: cohost ? `<@${cohost.id}>` : 'None', inline: true },
-        { name: 'Game Rules', value: `\`\`\`${gamerules}\`\`\`` },
-        { name: 'Concludes At', value: `\`\`\`${concludedTime.toISOString()}\`\`\`` },
+        { name: 'Game Rules', value: `\`\`\`${gamerules}\`\`\`` }, // Code block formatting
+        { name: 'Concludes At', value: `\`\`\`${concludedTime.toISOString()}\`\`\`` }, // Code block formatting
       )
       .setColor('#000000');
 
     const message = await interaction.reply({ embeds: [embed], components: [row], fetchReply: true });
+
+    // Handle button interactions
     const filter = i => i.user.id === interaction.user.id;
 
     try {
       const collected = await message.awaitMessageComponent({ filter, time: concludedMinutes * 60000 });
+
       if (collected.customId === 'concluded') {
-        const updatedRow = new ActionRowBuilder().addComponents(concludedButton.setDisabled(true));
+        // Remove the GameLink button when concluded button is pressed
+        const updatedRow = new ActionRowBuilder()
+          .addComponents(concludedButton.setDisabled(true));
+
         await collected.update({ content: 'Tryout has concluded!', components: [updatedRow] });
       }
+
     } catch (error) {
       console.error('Error collecting button interaction:', error);
       await interaction.editReply({ content: 'Timeout: No response received in time.', components: [] });
@@ -82,7 +88,7 @@ client.commands.set('tryout', {
   }
 });
 
-// Additional command definitions
+// Command: /add
 client.commands.set('add', {
   data: new SlashCommandBuilder()
     .setName('add')
@@ -91,22 +97,25 @@ client.commands.set('add', {
     .addUserOption(option => option.setName('user').setDescription('User to add wins to').setRequired(true)),
 
   async execute(interaction) {
-    if (!hasPermission(interaction)) {
-      return interaction.reply({ content: 'You do not have permission to use this command.', ephemeral: true });
-    }
+    if (!hasPermission(interaction)) return interaction.reply({ content: 'You do not have permission to use this command.', ephemeral: true });
 
     const number = interaction.options.getInteger('number');
     const user = interaction.options.getUser('user');
+
+    // Simulate the process without a database
     console.log(`Added ${number} wins to user ${user.id}.`);
+
     await interaction.reply({ content: `Added ${number} wins to <@${user.id}>.`, ephemeral: true });
   }
 });
 
-client.once('ready', async () => {
+// Making the 'ready' event async
+client.once('ready', async () => { // Now async
   console.log(`Bot is ready as ${client.user.tag}`);
+  const { REST, Routes } = require('discord.js');
+  const rest = new REST({ version: '10' }).setToken(TOKEN);
 
   try {
-    await deleteCommands();  // Deleting old commands
     console.log('Started refreshing application (/) commands.');
 
     if (!CLIENT_ID || !GUILD_ID) {
@@ -114,7 +123,7 @@ client.once('ready', async () => {
       return;
     }
 
-    const rest = new REST({ version: '10' }).setToken(TOKEN);
+    // Register new commands
     const newCommands = client.commands.map(command => command.data.toJSON());
     await rest.put(Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID), { body: newCommands });
 
@@ -126,6 +135,7 @@ client.once('ready', async () => {
 
 client.on('interactionCreate', async interaction => {
   if (!interaction.isCommand()) return;
+
   const command = client.commands.get(interaction.commandName);
   if (!command) return;
 
